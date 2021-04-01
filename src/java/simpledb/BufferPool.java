@@ -26,13 +26,18 @@ public class BufferPool {
     constructor instead. */
     public static final int DEFAULT_PAGES = 50;
 
+    private ConcurrentHashMap<PageId, Page> pageMap;
+    private int maxPage;
+
+
     /**
      * Creates a BufferPool that caches up to numPages pages.
      *
      * @param numPages maximum number of pages in this buffer pool.
      */
     public BufferPool(int numPages) {
-        // some code goes here
+        this.maxPage = numPages;
+        this.pageMap = new ConcurrentHashMap<> ();
     }
     
     public static int getPageSize() {
@@ -64,10 +69,15 @@ public class BufferPool {
      * @param pid the ID of the requested page
      * @param perm the requested permissions on the page
      */
-    public  Page getPage(TransactionId tid, PageId pid, Permissions perm)
+    public Page getPage(TransactionId tid, PageId pid, Permissions perm)
         throws TransactionAbortedException, DbException {
-        // some code goes here
-        return null;
+        if (pageMap.containsKey(pid))
+            return pageMap.get(pid);
+
+        Page page = ((HeapFile) Database.getCatalog().getDatabaseFile(pid.getTableId())).readPage(pid);
+        pageMap.put(pid, page);
+        
+        return page;
     }
 
     /**
