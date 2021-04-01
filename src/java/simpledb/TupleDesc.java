@@ -2,6 +2,8 @@ package simpledb;
 
 import java.io.Serializable;
 import java.util.*;
+import java.lang.Iterable;
+import java.lang.Math;
 
 /**
  * TupleDesc describes the schema of a tuple.
@@ -33,7 +35,28 @@ public class TupleDesc implements Serializable {
         public String toString() {
             return fieldName + "(" + fieldType + ")";
         }
+
+        public boolean equals(Object o) {
+            if (this == o) 
+                return true;
+            
+            if (o instanceof TDItem) {
+                TDItem rhs = (TDItem) o;
+                
+                if (!fieldType.equals(rhs.fieldType))
+                    return false;
+                                    
+                if (fieldName != null)
+                    return fieldName.equals(rhs.fieldName);
+
+                return rhs.fieldName == null;
+            } 
+            
+            return false;
+        }
     }
+
+    private TDItem[] TDItems;
 
     /**
      * @return
@@ -41,8 +64,21 @@ public class TupleDesc implements Serializable {
      *        that are included in this TupleDesc
      * */
     public Iterator<TDItem> iterator() {
-        // some code goes here
-        return null;
+        Iterator<TDItem> iterator = new Iterator<TDItem>() {
+            private int i = 0;
+ 
+            @Override
+            public boolean hasNext() {
+                return TDItems.length > i;
+            }
+ 
+            @Override
+            public TDItem next() {
+                return TDItems[i++];
+            }
+        };
+
+        return iterator;
     }
 
     private static final long serialVersionUID = 1L;
@@ -59,7 +95,11 @@ public class TupleDesc implements Serializable {
      *            be null.
      */
     public TupleDesc(Type[] typeAr, String[] fieldAr) {
-        // some code goes here
+        int length = Math.min(typeAr.length, fieldAr.length);
+        TDItems = new TDItem [length];
+
+        for (int i = 0; i < length; i++) 
+            TDItems[i] = new TDItem (typeAr[i], fieldAr[i]);
     }
 
     /**
@@ -71,15 +111,14 @@ public class TupleDesc implements Serializable {
      *            TupleDesc. It must contain at least one entry.
      */
     public TupleDesc(Type[] typeAr) {
-        // some code goes here
+        this(typeAr, new String [typeAr.length]);
     }
 
     /**
      * @return the number of fields in this TupleDesc
      */
     public int numFields() {
-        // some code goes here
-        return 0;
+        return TDItems.length;
     }
 
     /**
@@ -92,8 +131,10 @@ public class TupleDesc implements Serializable {
      *             if i is not a valid field reference.
      */
     public String getFieldName(int i) throws NoSuchElementException {
-        // some code goes here
-        return null;
+        if (i < 0 || i >= numFields())
+            throw new NoSuchElementException();
+
+        return TDItems[i].fieldName;
     }
 
     /**
@@ -107,8 +148,10 @@ public class TupleDesc implements Serializable {
      *             if i is not a valid field reference.
      */
     public Type getFieldType(int i) throws NoSuchElementException {
-        // some code goes here
-        return null;
+        if (i < 0 || i >= numFields())
+            throw new NoSuchElementException();
+
+        return TDItems[i].fieldType;
     }
 
     /**
@@ -121,8 +164,14 @@ public class TupleDesc implements Serializable {
      *             if no field with a matching name is found.
      */
     public int fieldNameToIndex(String name) throws NoSuchElementException {
-        // some code goes here
-        return 0;
+        int i = 0;
+        for (TDItem tdItem : TDItems) {
+            if (tdItem.fieldName != null && tdItem.fieldName.equals(name))
+                return i;
+            i++;
+        }
+
+        throw new NoSuchElementException();
     }
 
     /**
@@ -130,8 +179,10 @@ public class TupleDesc implements Serializable {
      *         Note that tuples from a given TupleDesc are of a fixed size.
      */
     public int getSize() {
-        // some code goes here
-        return 0;
+        int size = 0;
+        for (TDItem tdItem : TDItems)
+            size += tdItem.fieldType.getLen();
+        return size;
     }
 
     /**
@@ -145,8 +196,22 @@ public class TupleDesc implements Serializable {
      * @return the new TupleDesc
      */
     public static TupleDesc merge(TupleDesc td1, TupleDesc td2) {
-        // some code goes here
-        return null;
+        int size = td1.numFields() + td2.numFields();
+        Type[] typeAr = new Type [size];
+        String[] fieldAr = new String [size];
+
+        size = td1.numFields();
+        for (int i = 0; i < size; ++i) {
+            typeAr[i] = td1.TDItems[i].fieldType;
+            fieldAr[i] = td1.TDItems[i].fieldName; 
+        }
+        
+        for (int i = 0; i < td2.numFields(); ++i) {
+            typeAr[size + i] = td2.TDItems[i].fieldType;
+            fieldAr[size + i] = td2.TDItems[i].fieldName; 
+        }
+
+        return new TupleDesc(typeAr, fieldAr);
     }
 
     /**
@@ -159,7 +224,22 @@ public class TupleDesc implements Serializable {
      * @return true if the object is equal to this TupleDesc.
      */
     public boolean equals(Object o) {
-        // some code goes here
+        if (this == o) 
+            return true;
+
+        if (o instanceof TupleDesc) {
+            TupleDesc rhs = (TupleDesc) o;
+            if (rhs.numFields() != this.numFields()) {
+                return false;
+            }
+            for (int i = 0; i < numFields(); i++) {
+                if (!TDItems[i].equals(rhs.TDItems[i])) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        
         return false;
     }
 
@@ -177,7 +257,12 @@ public class TupleDesc implements Serializable {
      * @return String describing this descriptor.
      */
     public String toString() {
-        // some code goes here
-        return "";
+        StringBuffer str = new StringBuffer();
+        str.append("TupleDesc[");
+        for (TDItem tdItem : TDItems) {
+            str.append(tdItem.toString() + ",");
+        }
+        str.append("]");
+        return str.toString();
     }
 }
