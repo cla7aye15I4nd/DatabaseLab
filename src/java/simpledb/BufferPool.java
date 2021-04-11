@@ -1,7 +1,7 @@
 package simpledb;
 
 import java.io.*;
-
+import java.util.Random;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -71,12 +71,23 @@ public class BufferPool {
      */
     public Page getPage(TransactionId tid, PageId pid, Permissions perm)
         throws TransactionAbortedException, DbException {
-        if (pageMap.containsKey(pid))
-            return pageMap.get(pid);
-
-        Page page = ((HeapFile) Database.getCatalog().getDatabaseFile(pid.getTableId())).readPage(pid);
-        pageMap.put(pid, page);
         
+        Page page;
+        if (pageMap.containsKey(pid)) 
+            page = pageMap.get(pid);   
+        else {
+            page = ((HeapFile) Database.getCatalog().getDatabaseFile(pid.getTableId())).readPage(pid);
+            
+            if (page == null)
+                return null;                
+            if (pageMap.size() == maxPage)
+                evictPage();
+            pageMap.put(pid, page);
+        }
+        
+        if (perm == Permissions.READ_WRITE) 
+            page.markDirty(true, tid);
+
         return page;
     }
 
@@ -184,8 +195,7 @@ public class BufferPool {
         are removed from the cache so they can be reused safely
     */
     public synchronized void discardPage(PageId pid) {
-        // some code goes here
-        // not necessary for lab1
+        pageMap.remove(pid);
     }
 
     /**
@@ -193,13 +203,17 @@ public class BufferPool {
      * @param pid an ID indicating the page to flush
      */
     private synchronized  void flushPage(PageId pid) throws IOException {
-        // some code goes here
-        // not necessary for lab1
+        Page page = pageMap.get(pid);
+        if (page.isDirty() == null) 
+            return;
+            
+        Database.getCatalog().getDatabaseFile(pid.getTableId()).writePage(page);
+        page.markDirty(false, null);        
     }
 
     /** Write all pages of the specified transaction to disk.
      */
-    public synchronized  void flushPages(TransactionId tid) throws IOException {
+    public synchronized void flushPages(TransactionId tid) throws IOException {
         // some code goes here
         // not necessary for lab1|lab2
     }
@@ -209,8 +223,15 @@ public class BufferPool {
      * Flushes the page to disk to ensure dirty pages are updated on disk.
      */
     private synchronized  void evictPage() throws DbException {
-        // some code goes here
-        // not necessary for lab1
+        Random random = new Random();
+        PageId[] pageIds = pageMap.keySet().toArray(new PageId [maxPage]);
+
+        PageId pid = pageIds[random.nextInt(maxPage)];
+        
+        try { flushPage(pid); }
+        catch (IOException e) {}
+
+        discardPage(pid);
     }
 
 }

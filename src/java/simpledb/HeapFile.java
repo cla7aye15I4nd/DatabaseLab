@@ -117,7 +117,7 @@ public class HeapFile implements DbFile {
 
             private Iterator<Tuple> getTupleIterator() throws DbException, 
                 TransactionAbortedException {
-                return ((HeapPage) Database.getBufferPool().getPage(tid, new HeapPageId(getId(), i), Permissions.READ_WRITE)).iterator();
+                return ((HeapPage) Database.getBufferPool().getPage(tid, new HeapPageId(getId(), i), Permissions.READ_ONLY)).iterator();
             }
 
             @Override
