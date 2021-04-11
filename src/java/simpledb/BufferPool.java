@@ -76,7 +76,7 @@ public class BufferPool {
         if (pageMap.containsKey(pid)) 
             page = pageMap.get(pid);   
         else {
-            page = ((HeapFile) Database.getCatalog().getDatabaseFile(pid.getTableId())).readPage(pid);
+            page = Database.getCatalog().getDatabaseFile(pid.getTableId()).readPage(pid);
             
             if (page == null)
                 return null;                
