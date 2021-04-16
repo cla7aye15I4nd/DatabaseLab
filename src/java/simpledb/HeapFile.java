@@ -15,8 +15,6 @@ import java.util.*;
  */
 public class HeapFile implements DbFile {
 
-    private static final int PAGE_SIZE = 4096;
-    
     private File file;
     private TupleDesc td;
 
@@ -66,12 +64,12 @@ public class HeapFile implements DbFile {
     // see DbFile.java for javadocs
     public Page readPage(PageId pid) {
         Page page = null;
-        byte[] buf = new byte[PAGE_SIZE];
+        byte[] buf = new byte[BufferPool.getPageSize()];
 
         try {
             RandomAccessFile f = new RandomAccessFile(getFile(), "r");
                 
-            f.seek(pid.pageNumber() * PAGE_SIZE);
+            f.seek(pid.pageNumber() * BufferPool.getPageSize());
             f.read(buf, 0, buf.length);
             page = new HeapPage((HeapPageId) pid, buf);
         } catch (IOException e) { /* EMPTY */ } 
@@ -89,7 +87,7 @@ public class HeapFile implements DbFile {
      * Returns the number of pages in this HeapFile.
      */
     public int numPages() {
-        return (int) (file.length() / PAGE_SIZE);
+        return (int) (file.length() / BufferPool.getPageSize());
     }
 
     // see DbFile.java for javadocs

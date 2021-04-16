@@ -11,9 +11,7 @@ import java.io.*;
  * @see BufferPool
  *
  */
-public class HeapPage implements Page {
-
-    private static final int PAGE_SIZE = 4096;
+public class HeapPage implements Page {    
 
     final HeapPageId pid;
     final TupleDesc td;
@@ -69,7 +67,7 @@ public class HeapPage implements Page {
         @return the number of tuples on this page
     */
     private int getNumTuples() {        
-        return PAGE_SIZE * 8 / (td.getSize() * 8 + 1);
+        return BufferPool.getPageSize() * 8 / (td.getSize() * 8 + 1);
     }
 
     /**
@@ -294,8 +292,13 @@ public class HeapPage implements Page {
      * Abstraction to fill or clear a slot on this page.
      */
     private void markSlotUsed(int i, boolean value) {
-        // some code goes here
-        // not necessary for lab1
+        int headerbit = i & 7;
+		int headerbyte = i / 8;
+
+		if(value)
+			header[headerbyte] |= 1 << headerbit;
+		else
+			header[headerbyte] &= (0xFF ^ (1 << headerbit));
     }
 
     /**
