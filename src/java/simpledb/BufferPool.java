@@ -91,6 +91,14 @@ public class BufferPool {
         return page;
     }
 
+    public void updatePage(TransactionId tid, Page page) 
+        throws TransactionAbortedException, DbException {
+        if (!pageMap.containsKey(page.getId()) && pageMap.size() == maxPage)
+            evictPage();            
+        page.markDirty(true, tid);
+        pageMap.put(page.getId(), page);
+    }
+
     /**
      * Releases the lock on a page.
      * Calling this is very risky, and may result in wrong behavior. Think hard
@@ -153,12 +161,8 @@ public class BufferPool {
     public void insertTuple(TransactionId tid, int tableId, Tuple t)
         throws DbException, IOException, TransactionAbortedException {
         
-        for (Page page : Database.getCatalog().getDatabaseFile(tableId).insertTuple(tid, t)) {
-            if (!pageMap.containsKey(page.getId()) && pageMap.size() == maxPage)
-                evictPage();            
-            page.markDirty(true, tid);
-            pageMap.put(page.getId(), page);
-        }
+        for (Page page : Database.getCatalog().getDatabaseFile(tableId).insertTuple(tid, t))
+            updatePage(tid, page);        
     }
 
     /**
@@ -176,8 +180,9 @@ public class BufferPool {
      */
     public  void deleteTuple(TransactionId tid, Tuple t)
         throws DbException, IOException, TransactionAbortedException {
-        // some code goes here
-        // not necessary for lab1
+
+        for (Page page : Database.getCatalog().getDatabaseFile(t.getRecordId().getPageId().getTableId()).deleteTuple(tid, t))
+            updatePage(tid, page);            
     }
 
     /**
