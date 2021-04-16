@@ -634,11 +634,28 @@ public class BTreeFile implements DbFile {
 	 */
 	protected void stealFromLeafPage(BTreeLeafPage page, BTreeLeafPage sibling,
 			BTreeInternalPage parent, BTreeEntry entry, boolean isRightSibling) throws DbException {
-		// some code goes here
-        //
-        // Move some of the tuples from the sibling to the page so
-		// that the tuples are evenly distributed. Be sure to update
-		// the corresponding parent entry.
+		
+
+		Tuple tuple = null;
+		Iterator<Tuple> iter = null;
+		int size = (sibling.getNumTuples() - page.getNumTuples()) / 2;
+		
+		if (isRightSibling) 
+			iter = sibling.iterator();
+		else
+			iter = sibling.reverseIterator();        
+				        
+        while (size > 0 && iter.hasNext()) {
+			size--;
+			tuple = iter.next();			
+			sibling.deleteTuple(tuple);
+			page.insertTuple(tuple);			
+        }
+
+        if (isRightSibling) tuple = iter.next();
+
+        entry.setKey(tuple.getField(keyField));
+        parent.updateEntry(entry);
 	}
 
 	/**
@@ -714,7 +731,25 @@ public class BTreeFile implements DbFile {
 	protected void stealFromLeftInternalPage(TransactionId tid, HashMap<PageId, Page> dirtypages, 
 			BTreeInternalPage page, BTreeInternalPage leftSibling, BTreeInternalPage parent,
 			BTreeEntry parentEntry) throws DbException, IOException, TransactionAbortedException {
-		// some code goes here
+		Iterator<BTreeEntry> iter = leftSibling.reverseIterator();
+        int size = (leftSibling.getNumEntries() - page.getNumEntries()) / 2;
+        BTreeEntry middle = new BTreeEntry(parentEntry.getKey(), null, page.iterator().next().getLeftChild());
+
+        while (size > 0) {
+            BTreeEntry child = iter.next();
+			
+			middle.setLeftChild(child.getRightChild());
+			page.insertEntry(middle);            
+            leftSibling.deleteKeyAndRightChild(child);
+
+			size--;
+			middle = new BTreeEntry(child.getKey(), null, child.getRightChild());
+        }
+
+        parentEntry.setKey(middle.getKey());
+        parent.updateEntry(parentEntry);
+        updateParentPointers(tid, dirtypages, page);
+		updateParentPointers(tid, dirtypages, leftSibling);
 	}
 	
 	/**
@@ -738,11 +773,26 @@ public class BTreeFile implements DbFile {
 	protected void stealFromRightInternalPage(TransactionId tid, HashMap<PageId, Page> dirtypages, 
 			BTreeInternalPage page, BTreeInternalPage rightSibling, BTreeInternalPage parent,
 			BTreeEntry parentEntry) throws DbException, IOException, TransactionAbortedException {
-		// some code goes here
-        // Move some of the entries from the right sibling to the page so
-		// that the entries are evenly distributed. Be sure to update
-		// the corresponding parent entry. Be sure to update the parent
-		// pointers of all children in the entries that were moved.
+		
+		Iterator<BTreeEntry> iter = rightSibling.iterator();
+        int size = (rightSibling.getNumEntries() - page.getNumEntries()) / 2;
+        BTreeEntry middle = new BTreeEntry(parentEntry.getKey(), page.reverseIterator().next().getRightChild(), null);
+
+        while (size > 0) {			
+            BTreeEntry child = iter.next();
+			
+			middle.setRightChild(child.getLeftChild());
+			page.insertEntry(middle);
+            rightSibling.deleteKeyAndLeftChild(child);
+
+			size--;
+			middle = new BTreeEntry(child.getKey(), child.getLeftChild(), null);
+        }
+
+        parentEntry.setKey(middle.getKey());
+        parent.updateEntry(parentEntry);
+        updateParentPointers(tid, dirtypages, page);
+		updateParentPointers(tid, dirtypages, rightSibling);
 	}
 	
 	/**
@@ -767,12 +817,21 @@ public class BTreeFile implements DbFile {
 			BTreeLeafPage leftPage, BTreeLeafPage rightPage, BTreeInternalPage parent, BTreeEntry parentEntry) 
 					throws DbException, IOException, TransactionAbortedException {
 
-		// some code goes here
-        //
-		// Move all the tuples from the right page to the left page, update
-		// the sibling pointers, and make the right page available for reuse.
-		// Delete the entry in the parent corresponding to the two pages that are merging -
-		// deleteParentEntry() will be useful here
+		Iterator<Tuple> iter = rightPage.iterator();
+        while (iter.hasNext()) {
+            Tuple tuple = iter.next();
+            rightPage.deleteTuple(tuple);
+            leftPage.insertTuple(tuple);
+        }
+
+		BTreePageId id = rightPage.getRightSiblingId();
+		
+		leftPage.setRightSiblingId(id);		
+        if (id != null)
+            ((BTreeLeafPage) getPage(tid, dirtypages, id, Permissions.READ_WRITE)).setLeftSiblingId(leftPage.getId());        
+        
+		setEmptyPage(tid, dirtypages, rightPage.getId().pageNumber());
+        deleteParentEntry(tid, dirtypages, leftPage, parent, parentEntry);
 	}
 
 	/**
@@ -798,14 +857,24 @@ public class BTreeFile implements DbFile {
 	protected void mergeInternalPages(TransactionId tid, HashMap<PageId, Page> dirtypages, 
 			BTreeInternalPage leftPage, BTreeInternalPage rightPage, BTreeInternalPage parent, BTreeEntry parentEntry) 
 					throws DbException, IOException, TransactionAbortedException {
-		
-		// some code goes here
-        //
-        // Move all the entries from the right page to the left page, update
-		// the parent pointers of the children in the entries that were moved, 
-		// and make the right page available for reuse
-		// Delete the entry in the parent corresponding to the two pages that are merging -
-		// deleteParentEntry() will be useful here
+		leftPage.insertEntry(
+			new BTreeEntry(
+				parentEntry.getKey(), 
+				leftPage.reverseIterator().next().getRightChild(),
+                rightPage.iterator().next().getLeftChild()
+			)
+		);
+        
+		Iterator<BTreeEntry> iter = rightPage.iterator();
+        while (iter.hasNext()) {
+            BTreeEntry entry = iter.next();
+			rightPage.deleteKeyAndLeftChild(entry);
+			leftPage.insertEntry(entry);            
+        }
+
+        setEmptyPage(tid, dirtypages, rightPage.getId().pageNumber());
+        updateParentPointers(tid, dirtypages, leftPage);
+        deleteParentEntry(tid, dirtypages, leftPage, parent, parentEntry);
 	}
 	
 	/**
