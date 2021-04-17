@@ -191,9 +191,8 @@ public class BufferPool {
      *     break simpledb if running in NO STEAL mode.
      */
     public synchronized void flushAllPages() throws IOException {
-        // some code goes here
-        // not necessary for lab1
-
+        for (PageId pid : pageMap.keySet()) 
+            flushPage(pid);
     }
 
     /** Remove the specific page id from the buffer pool.

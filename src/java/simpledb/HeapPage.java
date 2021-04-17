@@ -238,8 +238,10 @@ public class HeapPage implements Page {
      * @param t The tuple to delete
      */
     public void deleteTuple(Tuple t) throws DbException {
-        // some code goes here
-        // not necessary for lab1
+        int index = t.getRecordId().tupleno();
+        
+        tuples[index] = null;
+        markSlotUsed(index, false);
     }
 
     /**
@@ -250,8 +252,13 @@ public class HeapPage implements Page {
      * @param t The tuple to add.
      */
     public void insertTuple(Tuple t) throws DbException {
-        // some code goes here
-        // not necessary for lab1
+        for (int i = 0; i < getNumTuples(); i++) 
+            if (!isSlotUsed(i)) {
+                tuples[i] = t;
+                markSlotUsed(i, true);
+                t.setRecordId(new RecordId(pid, i));                
+                break;
+            }        
     }
 
     /**
