@@ -818,20 +818,20 @@ public class BTreeFile implements DbFile {
 					throws DbException, IOException, TransactionAbortedException {
 
 		Iterator<Tuple> iter = rightPage.iterator();
-        while (iter.hasNext()) {
-            Tuple tuple = iter.next();
-            rightPage.deleteTuple(tuple);
-            leftPage.insertTuple(tuple);
-        }
+		while (iter.hasNext()) {
+			Tuple tuple = iter.next();
+			rightPage.deleteTuple(tuple);
+			leftPage.insertTuple(tuple);
+		}
 
 		BTreePageId id = rightPage.getRightSiblingId();
-		
+
 		leftPage.setRightSiblingId(id);		
-        if (id != null)
-            ((BTreeLeafPage) getPage(tid, dirtypages, id, Permissions.READ_WRITE)).setLeftSiblingId(leftPage.getId());        
-        
+		if (id != null)
+			((BTreeLeafPage) getPage(tid, dirtypages, id, Permissions.READ_WRITE)).setLeftSiblingId(leftPage.getId());        
+
 		setEmptyPage(tid, dirtypages, rightPage.getId().pageNumber());
-        deleteParentEntry(tid, dirtypages, leftPage, parent, parentEntry);
+		deleteParentEntry(tid, dirtypages, leftPage, parent, parentEntry);
 	}
 
 	/**
@@ -861,20 +861,20 @@ public class BTreeFile implements DbFile {
 			new BTreeEntry(
 				parentEntry.getKey(), 
 				leftPage.reverseIterator().next().getRightChild(),
-                rightPage.iterator().next().getLeftChild()
+				rightPage.iterator().next().getLeftChild()
 			)
 		);
-        
+
 		Iterator<BTreeEntry> iter = rightPage.iterator();
-        while (iter.hasNext()) {
-            BTreeEntry entry = iter.next();
+		while (iter.hasNext()) {
+			BTreeEntry entry = iter.next();
 			rightPage.deleteKeyAndLeftChild(entry);
 			leftPage.insertEntry(entry);            
-        }
+		}
 
-        setEmptyPage(tid, dirtypages, rightPage.getId().pageNumber());
+		setEmptyPage(tid, dirtypages, rightPage.getId().pageNumber());
 		updateParentPointers(tid, dirtypages, leftPage);
-        deleteParentEntry(tid, dirtypages, leftPage, parent, parentEntry);
+		deleteParentEntry(tid, dirtypages, leftPage, parent, parentEntry);
 	}
 	
 	/**
