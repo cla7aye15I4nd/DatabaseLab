@@ -285,7 +285,7 @@ public class BTreeFile implements DbFile {
 		BTreeInternalPage fa = getParentWithEmptySlots(tid, dirtypages, page.getParentId(), cutoff);
         
 		fa.insertEntry(new BTreeEntry(cutoff, pageId, splitId));
-        updateParentPointers(tid, dirtypages, fa);
+		updateParentPointers(tid, dirtypages, fa);
 
 		if (cutoff.compare(Op.LESS_THAN, field))
 			return split;
@@ -331,15 +331,15 @@ public class BTreeFile implements DbFile {
 			split.insertEntry(entry);
 		}
 		        
-        entry = iter.next();
-        page.deleteKeyAndRightChild(entry);
+		entry = iter.next();
+		page.deleteKeyAndRightChild(entry);
         
 		Field cutoff = entry.getKey();
 		BTreeInternalPage fa = getParentWithEmptySlots(tid, dirtypages, page.getParentId(), cutoff);
 		fa.insertEntry(new BTreeEntry(cutoff, page.getId(), split.getId()));
 
-        updateParentPointers(tid, dirtypages, fa);
-        updateParentPointers(tid, dirtypages, split);
+		updateParentPointers(tid, dirtypages, fa);
+		updateParentPointers(tid, dirtypages, split);
 		if (cutoff.compare(Op.LESS_THAN, field))
 			return split;
 
@@ -873,7 +873,7 @@ public class BTreeFile implements DbFile {
         }
 
         setEmptyPage(tid, dirtypages, rightPage.getId().pageNumber());
-        updateParentPointers(tid, dirtypages, leftPage);
+		updateParentPointers(tid, dirtypages, leftPage);
         deleteParentEntry(tid, dirtypages, leftPage, parent, parentEntry);
 	}
 	
