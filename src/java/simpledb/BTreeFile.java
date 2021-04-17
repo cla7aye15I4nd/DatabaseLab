@@ -639,23 +639,23 @@ public class BTreeFile implements DbFile {
 		Tuple tuple = null;
 		Iterator<Tuple> iter = null;
 		int size = (sibling.getNumTuples() - page.getNumTuples()) / 2;
-		
+
 		if (isRightSibling) 
 			iter = sibling.iterator();
 		else
 			iter = sibling.reverseIterator();        
-				        
-        while (size > 0 && iter.hasNext()) {
+						
+		while (size > 0 && iter.hasNext()) {
 			size--;
 			tuple = iter.next();			
 			sibling.deleteTuple(tuple);
 			page.insertTuple(tuple);			
-        }
+		}
 
-        if (isRightSibling) tuple = iter.next();
+		if (isRightSibling) tuple = iter.next();
 
-        entry.setKey(tuple.getField(keyField));
-        parent.updateEntry(entry);
+		entry.setKey(tuple.getField(keyField));
+		parent.updateEntry(entry);
 	}
 
 	/**
@@ -732,23 +732,23 @@ public class BTreeFile implements DbFile {
 			BTreeInternalPage page, BTreeInternalPage leftSibling, BTreeInternalPage parent,
 			BTreeEntry parentEntry) throws DbException, IOException, TransactionAbortedException {
 		Iterator<BTreeEntry> iter = leftSibling.reverseIterator();
-        int size = (leftSibling.getNumEntries() - page.getNumEntries()) / 2;
-        BTreeEntry middle = new BTreeEntry(parentEntry.getKey(), null, page.iterator().next().getLeftChild());
+		int size = (leftSibling.getNumEntries() - page.getNumEntries()) / 2;
+		BTreeEntry middle = new BTreeEntry(parentEntry.getKey(), null, page.iterator().next().getLeftChild());
 
-        while (size > 0) {
-            BTreeEntry child = iter.next();
+		while (size > 0) {
+			BTreeEntry child = iter.next();
 			
 			middle.setLeftChild(child.getRightChild());
 			page.insertEntry(middle);            
-            leftSibling.deleteKeyAndRightChild(child);
+			leftSibling.deleteKeyAndRightChild(child);
 
 			size--;
 			middle = new BTreeEntry(child.getKey(), null, child.getRightChild());
-        }
+		}
 
-        parentEntry.setKey(middle.getKey());
-        parent.updateEntry(parentEntry);
-        updateParentPointers(tid, dirtypages, page);
+		parentEntry.setKey(middle.getKey());
+		parent.updateEntry(parentEntry);
+		updateParentPointers(tid, dirtypages, page);
 		updateParentPointers(tid, dirtypages, leftSibling);
 	}
 	
@@ -775,23 +775,23 @@ public class BTreeFile implements DbFile {
 			BTreeEntry parentEntry) throws DbException, IOException, TransactionAbortedException {
 		
 		Iterator<BTreeEntry> iter = rightSibling.iterator();
-        int size = (rightSibling.getNumEntries() - page.getNumEntries()) / 2;
-        BTreeEntry middle = new BTreeEntry(parentEntry.getKey(), page.reverseIterator().next().getRightChild(), null);
+		int size = (rightSibling.getNumEntries() - page.getNumEntries()) / 2;
+		BTreeEntry middle = new BTreeEntry(parentEntry.getKey(), page.reverseIterator().next().getRightChild(), null);
 
-        while (size > 0) {			
-            BTreeEntry child = iter.next();
+		while (size > 0) {			
+			BTreeEntry child = iter.next();
 			
 			middle.setRightChild(child.getLeftChild());
 			page.insertEntry(middle);
-            rightSibling.deleteKeyAndLeftChild(child);
+			rightSibling.deleteKeyAndLeftChild(child);
 
 			size--;
 			middle = new BTreeEntry(child.getKey(), child.getLeftChild(), null);
-        }
+		}
 
-        parentEntry.setKey(middle.getKey());
-        parent.updateEntry(parentEntry);
-        updateParentPointers(tid, dirtypages, page);
+		parentEntry.setKey(middle.getKey());
+		parent.updateEntry(parentEntry);
+		updateParentPointers(tid, dirtypages, page);
 		updateParentPointers(tid, dirtypages, rightSibling);
 	}
 	
