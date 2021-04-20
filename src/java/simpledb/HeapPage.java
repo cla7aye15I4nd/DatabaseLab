@@ -240,6 +240,8 @@ public class HeapPage implements Page {
     public void deleteTuple(Tuple t) throws DbException {
         int index = t.getRecordId().tupleno();
         
+        if (!pid.equals(t.getRecordId().getPageId()) || !isSlotUsed(index))
+            throw new DbException("");
         tuples[index] = null;
         markSlotUsed(index, false);
     }
@@ -257,8 +259,9 @@ public class HeapPage implements Page {
                 tuples[i] = t;
                 markSlotUsed(i, true);
                 t.setRecordId(new RecordId(pid, i));                
-                break;
-            }        
+                return;
+            }    
+        throw new DbException("");    
     }
 
     /**
@@ -268,6 +271,8 @@ public class HeapPage implements Page {
     public void markDirty(boolean dirty, TransactionId tid) {
         if (dirty)
             this.dirtyId = tid;
+        else
+            this.dirtyId = null;
     }
 
     /**
@@ -314,18 +319,16 @@ public class HeapPage implements Page {
      */
     public Iterator<Tuple> iterator() {
         Iterator<Tuple> iterator = new Iterator<Tuple>() {
-            private int i = 0;
-            private int count = 0;
+            private int i = 0;            
  
             @Override
             public boolean hasNext() {
-                return count + getNumEmptySlots() < getNumTuples();
+                for (; i < getNumTuples() && !isSlotUsed(i); i++);
+                return i < getNumTuples();
             }
  
             @Override
-            public Tuple next() {
-                count ++;
-                for (; !isSlotUsed(i); i++);
+            public Tuple next() {                
                 return tuples[i++];
             }
         };
