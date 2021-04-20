@@ -285,7 +285,8 @@ public class BTreeFile implements DbFile {
 		BTreeInternalPage fa = getParentWithEmptySlots(tid, dirtypages, page.getParentId(), cutoff);
         
 		fa.insertEntry(new BTreeEntry(cutoff, pageId, splitId));
-		updateParentPointers(tid, dirtypages, fa);
+		split.setParentId(fa.getId());
+		// updateParentPointers(tid, dirtypages, fa);
 
 		if (cutoff.compare(Op.LESS_THAN, field))
 			return split;
