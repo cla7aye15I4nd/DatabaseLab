@@ -340,6 +340,7 @@ public class BTreeFile implements DbFile {
 		fa.insertEntry(new BTreeEntry(cutoff, page.getId(), split.getId()));
 
 		// updateParentPointers(tid, dirtypages, fa);
+		split.setParentId(fa.getId());
 		updateParentPointers(tid, dirtypages, split);
 		if (cutoff.compare(Op.LESS_THAN, field))
 			return split;
