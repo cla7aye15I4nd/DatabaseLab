@@ -68,9 +68,6 @@ public class HeapPage implements Page {
         @return the number of tuples on this page
     */
     private int getNumTuples() {        
-        if (numSlots != 0) 
-            return numSlots;        
-        
         return PAGE_SIZE * 8 / (td.getSize() * 8 + 1);
     }
 
