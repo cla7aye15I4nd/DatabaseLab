@@ -139,7 +139,21 @@ public class Aggregate extends Operator {
      * iterator.
      */
     public TupleDesc getTupleDesc() {
-        return iter.getTupleDesc();
+        Type[] types;
+        String[] names;
+                
+        TupleDesc td = child.getTupleDesc();
+        String name = td.getFieldName(afield);
+
+        if (gfield == Aggregator.NO_GROUPING){
+            types = new Type[]{Type.INT_TYPE};
+            names = new String[]{ name };
+        } else {
+            types = new Type[]{ td.getFieldType(gfield), Type.INT_TYPE };
+            names = new String[]{ td.getFieldName(gfield), name };
+        }
+
+	    return new TupleDesc(types, names);
     }
 
     public void close() {
