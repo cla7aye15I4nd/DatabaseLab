@@ -72,6 +72,7 @@ public class HeapFile implements DbFile {
             f.seek(pid.pageNumber() * BufferPool.getPageSize());
             f.read(buf, 0, buf.length);
             page = new HeapPage((HeapPageId) pid, buf);
+            f.close();
         } catch (IOException e) { /* EMPTY */ } 
         
         return page;
@@ -82,6 +83,7 @@ public class HeapFile implements DbFile {
         RandomAccessFile fp = new RandomAccessFile(file, "rw");
         fp.seek(page.getId().pageNumber() * BufferPool.getPageSize());        
         fp.write(page.getPageData());
+        fp.close();
     }
 
     /**
