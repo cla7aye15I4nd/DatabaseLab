@@ -28,7 +28,7 @@ public class IntHistogram {
      * @param max The maximum integer value that will ever be passed to this class for histogramming
      */
     public IntHistogram(int buckets, int min, int max) {
-        if (max - min + 1 <= buckets) 
+        if (max - min + 1 > buckets) 
             this.width = (max - min + 1) / buckets;
         else {
             buckets = max - min + 1;
@@ -87,7 +87,9 @@ public class IntHistogram {
      * @param v Value
      * @return Predicted selectivity of this particular operator and value
      */
-    public double estimateSelectivity(Predicate.Op op, int v) {
+    public double estimateSelectivity(Predicate.Op op, int v) {        
+        if (ntups == 0)
+            return 0.0;                    
         if (op == Predicate.Op.LESS_THAN_OR_EQ)
             return 	estimateSelectivity(Predicate.Op.LESS_THAN, v + 1);                
         if (op == Predicate.Op.GREATER_THAN_OR_EQ)
