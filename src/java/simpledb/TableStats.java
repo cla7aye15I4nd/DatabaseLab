@@ -66,6 +66,12 @@ public class TableStats {
      */
     static final int NUM_HIST_BINS = 100;
 
+    private int ioCostPerPage;
+    private int tableid;    
+    private int totalTuples;
+    private TupleDesc td;
+    private Object[] histograms;
+
     /**
      * Create a new TableStats object, that keeps track of statistics on each
      * column of a table
@@ -77,14 +83,52 @@ public class TableStats {
      *            sequential-scan IO and disk seeks.
      */
     public TableStats(int tableid, int ioCostPerPage) {
-        // For this function, you'll have to get the
-        // DbFile for the table in question,
-        // then scan through its tuples and calculate
-        // the values that you need.
-        // You should try to do this reasonably efficiently, but you don't
-        // necessarily have to (for example) do everything
-        // in a single scan of the table.
-        // some code goes here
+        this.ioCostPerPage = ioCostPerPage;
+        this.tableid = tableid;
+        this.totalTuples = 0;
+        this.td =  Database.getCatalog().getTupleDesc(tableid);
+        this.histograms = new Object [td.numFields()];
+        
+        int[] min = new int [td.numFields()];
+        int[] max = new int [td.numFields()];            
+        for (int i = 0; i < td.numFields(); i++) {
+            min[i] = Integer.MAX_VALUE;
+            max[i] = Integer.MIN_VALUE;
+        }
+        
+        try {            
+            SeqScan s = new SeqScan(new TransactionId(), tableid);
+            
+            s.open();
+            while (s.hasNext()) {
+                totalTuples++;
+                Tuple tuple = s.next();
+                for (int i = 0; i < td.numFields(); i++) 
+                    if (td.getFieldType(i) == Type.INT_TYPE) {
+                        int v = ((IntField) tuple.getField(i)).getValue();
+                        if (min[i] > v) min[i] = v;                        
+                        if (max[i] < v) max[i] = v;                        
+                    }                
+            }
+            
+            for (int i = 0; i < td.numFields(); i++) 
+                if (td.getFieldType(i) == Type.INT_TYPE)
+                    histograms[i] = new IntHistogram(NUM_HIST_BINS, min[i], max[i]);
+                else
+                    histograms[i] = new StringHistogram(NUM_HIST_BINS);
+
+            s.rewind();
+            while (s.hasNext()) {
+                Tuple tuple = s.next();                
+                for (int i = 0; i < td.numFields(); i++) 
+                    if (td.getFieldType(i) == Type.INT_TYPE) 
+                        ((IntHistogram) histograms[i]).addValue(((IntField) tuple.getField(i)).getValue());
+                    else 
+                        ((StringHistogram) histograms[i]).addValue(((StringField) tuple.getField(i)).getValue());                    
+            }
+            s.close();
+
+        } catch (Exception e) {}
     }
 
     /**
@@ -100,8 +144,7 @@ public class TableStats {
      * @return The estimated cost of scanning the table.
      */
     public double estimateScanCost() {
-        // some code goes here
-        return 0;
+        return ((HeapFile) Database.getCatalog().getDatabaseFile(tableid)).numPages() * ioCostPerPage;
     }
 
     /**
@@ -114,8 +157,7 @@ public class TableStats {
      *         selectivityFactor
      */
     public int estimateTableCardinality(double selectivityFactor) {
-        // some code goes here
-        return 0;
+        return (int) (totalTuples() * selectivityFactor);
     }
 
     /**
@@ -147,16 +189,17 @@ public class TableStats {
      *         predicate
      */
     public double estimateSelectivity(int field, Predicate.Op op, Field constant) {
-        // some code goes here
-        return 1.0;
+        if (td.getFieldType(field) == Type.INT_TYPE) 
+            return ((IntHistogram) histograms[field]).estimateSelectivity(op, ((IntField) constant).getValue());
+        else 
+            return ((StringHistogram) histograms[field]).estimateSelectivity(op, ((StringField) constant).getValue());        
     }
 
     /**
      * return the total number of tuples in this table
      * */
     public int totalTuples() {
-        // some code goes here
-        return 0;
+        return totalTuples;
     }
 
 }
