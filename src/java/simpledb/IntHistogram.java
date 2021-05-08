@@ -4,6 +4,13 @@ package simpledb;
  */
 public class IntHistogram {
 
+    private int min;
+    private int max;
+    private int ntups;
+    private int length;
+    private int[] fenwick;
+    private double width;    
+
     /**
      * Create a new IntHistogram.
      * 
@@ -21,7 +28,40 @@ public class IntHistogram {
      * @param max The maximum integer value that will ever be passed to this class for histogramming
      */
     public IntHistogram(int buckets, int min, int max) {
-    	// some code goes here
+        if (max - min + 1 <= buckets) 
+            this.width = (max - min + 1) / buckets;
+        else {
+            buckets = max - min + 1;
+            this.width = 1;
+        }
+
+        this.min = min;
+        this.max = max;
+        this.ntups = 0;
+        this.length = buckets;
+        this.fenwick = new int [buckets * 2];
+    }
+
+    private int lowbit(int v) {
+        return v & -v;
+    }
+
+    private double getPrefixSum(int v) {
+        double sum = 0.0;
+        while (v != 0) {
+            sum += fenwick[v];
+            v -= lowbit(v);
+        }
+        return sum;
+    }
+    
+    private int getIndex(int v) {
+        int id = (int) ((v - min) / width) + 1;
+
+        if (id < 1) return 1;
+        if (id > length) return length;
+
+        return id;
     }
 
     /**
@@ -29,7 +69,12 @@ public class IntHistogram {
      * @param v Value to add to the histogram
      */
     public void addValue(int v) {
-    	// some code goes here
+    	ntups++;
+        v = getIndex(v);
+        while (v <= length) {
+            fenwick[v]++;
+            v += lowbit(v);
+        }
     }
 
     /**
@@ -43,8 +88,30 @@ public class IntHistogram {
      * @return Predicted selectivity of this particular operator and value
      */
     public double estimateSelectivity(Predicate.Op op, int v) {
+        if (op == Predicate.Op.LESS_THAN_OR_EQ)
+            return 	estimateSelectivity(Predicate.Op.LESS_THAN, v + 1);                
+        if (op == Predicate.Op.GREATER_THAN_OR_EQ)
+            return estimateSelectivity(Predicate.Op.GREATER_THAN, v - 1);
+        if (op == Predicate.Op.GREATER_THAN)
+            return 1.0 - estimateSelectivity(Predicate.Op.LESS_THAN, v + 1);
+        if (op == Predicate.Op.NOT_EQUALS)
+            return 1.0 - estimateSelectivity(Predicate.Op.EQUALS, v);
+        
+        int i = getIndex(v);
+        if (op == Predicate.Op.EQUALS) {
+            if (v < min || v > max) return 0;
+            return (getPrefixSum(i) - getPrefixSum(i-1)) / width / ntups;
+        }
 
-    	// some code goes here
+        if (op == Predicate.Op.LESS_THAN) {
+            if (v < min) return 0.0;
+            if (v > max) return 1.0;
+            double a = getPrefixSum(i);
+            double b = getPrefixSum(i-1);
+
+            return (b + (a - b) * (v - (min + width * (i - 1)))) / width / ntups;
+        }
+
         return -1.0;
     }
     
