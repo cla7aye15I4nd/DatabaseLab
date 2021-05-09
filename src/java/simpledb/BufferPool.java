@@ -27,6 +27,7 @@ public class BufferPool {
     public static final int DEFAULT_PAGES = 50;
 
     private ConcurrentHashMap<PageId, Page> pageMap;
+    private TransactionManager mgr;
     private int maxPage;
 
 
@@ -38,6 +39,7 @@ public class BufferPool {
     public BufferPool(int numPages) {
         this.maxPage = numPages;
         this.pageMap = new ConcurrentHashMap<> ();
+        this.mgr = new TransactionManager ();
     }
     
     public static int getPageSize() {
@@ -71,7 +73,8 @@ public class BufferPool {
      */
     public Page getPage(TransactionId tid, PageId pid, Permissions perm)
         throws TransactionAbortedException, DbException {
-        
+        mgr.acquire(tid, pid, perm);
+
         Page page;
         if (pageMap.containsKey(pid)) 
             page = pageMap.get(pid);   
@@ -80,13 +83,14 @@ public class BufferPool {
             
             if (page == null)
                 return null;                
-            if (pageMap.size() == maxPage)
+            if (pageMap.size() >= maxPage)
                 evictPage();
             pageMap.put(pid, page);
+            page.setBeforeImage();
         }
         
-        if (perm == Permissions.READ_WRITE) 
-            page.markDirty(true, tid);
+        // if (perm == Permissions.READ_WRITE) 
+        //     page.markDirty(true, tid);
 
         return page;
     }
@@ -108,9 +112,8 @@ public class BufferPool {
      * @param tid the ID of the transaction requesting the unlock
      * @param pid the ID of the page to unlock
      */
-    public  void releasePage(TransactionId tid, PageId pid) {
-        // some code goes here
-        // not necessary for lab1|lab2
+    public void releasePage(TransactionId tid, PageId pid) {
+        mgr.release(tid, pid);
     }
 
     /**
@@ -119,15 +122,12 @@ public class BufferPool {
      * @param tid the ID of the transaction requesting the unlock
      */
     public void transactionComplete(TransactionId tid) throws IOException {
-        // some code goes here
-        // not necessary for lab1|lab2
+        transactionComplete (tid, true);
     }
 
     /** Return true if the specified transaction has a lock on the specified page */
-    public boolean holdsLock(TransactionId tid, PageId p) {
-        // some code goes here
-        // not necessary for lab1|lab2
-        return false;
+    public boolean holdsLock(TransactionId tid, PageId pid) {
+        return mgr.holdsLock(tid, pid);
     }
 
     /**
@@ -139,8 +139,18 @@ public class BufferPool {
      */
     public void transactionComplete(TransactionId tid, boolean commit)
         throws IOException {
-        // some code goes here
-        // not necessary for lab1|lab2
+        if (tid == null)
+            return;            
+        for (PageId pid : pageMap.keySet()) {
+            Page page = pageMap.get(pid);
+            if (tid.equals(page.isDirty())) {
+                if (commit) 
+                    flushPage(pid);
+                else
+                    pageMap.put(pid, page.getBeforeImage());
+            }
+        }
+        mgr.release(tid);
     }
 
     /**
@@ -232,10 +242,19 @@ public class BufferPool {
      * Flushes the page to disk to ensure dirty pages are updated on disk.
      */
     private synchronized  void evictPage() throws DbException {
+        int size = 0;
         Random random = new Random();
-        PageId[] pageIds = pageMap.keySet().toArray(new PageId [maxPage]);
+        PageId[] pageIds = new PageId [pageMap.size()];
 
-        PageId pid = pageIds[random.nextInt(maxPage)];
+        for (PageId pid : pageMap.keySet()) {
+            if (pageMap.get(pid).isDirty() == null)
+                pageIds[size++] = pid;
+        }
+
+        if (size == 0)
+            throw new DbException("");
+
+        PageId pid = pageIds[random.nextInt(size)];
         
         try { flushPage(pid); }
         catch (IOException e) {}
