@@ -66,7 +66,7 @@ public class Delete extends Operator {
         int count = 0;
         while (child.hasNext()) {            
             try { Database.getBufferPool().deleteTuple(t, child.next()); }
-            catch (Exception e) {}            
+            catch (IOException e) {}            
             count++;
         }
         
