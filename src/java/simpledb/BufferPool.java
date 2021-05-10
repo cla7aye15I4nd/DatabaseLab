@@ -1,7 +1,7 @@
 package simpledb;
 
 import java.io.*;
-import java.util.Random;
+import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
@@ -25,11 +25,10 @@ public class BufferPool {
     other classes. BufferPool should use the numPages argument to the
     constructor instead. */
     public static final int DEFAULT_PAGES = 50;
-
-    private ConcurrentHashMap<PageId, Page> pageMap;
-    private TransactionManager mgr;
-    private int maxPage;
-
+    
+    private final HashMap<PageId, Page> pageMap;    
+    private final TransactionManager mgr;
+    private final int maxPage;
 
     /**
      * Creates a BufferPool that caches up to numPages pages.
@@ -37,9 +36,9 @@ public class BufferPool {
      * @param numPages maximum number of pages in this buffer pool.
      */
     public BufferPool(int numPages) {
-        this.maxPage = numPages;
-        this.pageMap = new ConcurrentHashMap<> ();
-        this.mgr = new TransactionManager ();
+        maxPage = numPages;
+        pageMap = new HashMap<>();                
+        mgr = new TransactionManager();
     }
     
     public static int getPageSize() {
@@ -67,39 +66,36 @@ public class BufferPool {
      * space in the buffer pool, an page should be evicted and the new page
      * should be added in its place.
      *
+     * Notice:
+     *
      * @param tid the ID of the transaction requesting the page
      * @param pid the ID of the requested page
      * @param perm the requested permissions on the page
      */
     public Page getPage(TransactionId tid, PageId pid, Permissions perm)
-        throws TransactionAbortedException, DbException {
-        mgr.acquire(tid, pid, perm);
+        throws TransactionAbortedException, DbException {        
+        synchronized (this)
+        {
+            mgr.acquire(tid, pid, perm);
 
-        Page page;
-        if (pageMap.containsKey(pid)) 
-            page = pageMap.get(pid);   
-        else {
-            page = Database.getCatalog().getDatabaseFile(pid.getTableId()).readPage(pid);
-            
-            if (page == null)
-                return null;                
-            if (pageMap.size() >= maxPage)
-                evictPage();
-            pageMap.put(pid, page);
-            page.setBeforeImage();
+            Page page;
+            if (!pageMap.containsKey(pid)) {
+                page = Database.getCatalog().getDatabaseFile(pid.getTableId()).readPage(pid);
+                while (pageMap.size() >= maxPage)
+                    evictPage();
+                pageMap.put(pid, page);                                
+            }
+            else            
+                page = pageMap.get(pid);                            
+            return page;
         }
-        
-        // if (perm == Permissions.READ_WRITE) 
-        //     page.markDirty(true, tid);
-
-        return page;
     }
 
-    public void updatePage(TransactionId tid, Page page) 
+    public synchronized void updatePage(TransactionId tid, Page page) 
         throws TransactionAbortedException, DbException {
-        if (!pageMap.containsKey(page.getId()) && pageMap.size() == maxPage)
-            evictPage();            
-        page.markDirty(true, tid);
+        if (!pageMap.containsKey(page.getId()))
+            while (pageMap.size() >= maxPage)
+                evictPage();            
         pageMap.put(page.getId(), page);
     }
 
@@ -122,12 +118,12 @@ public class BufferPool {
      * @param tid the ID of the transaction requesting the unlock
      */
     public void transactionComplete(TransactionId tid) throws IOException {
-        transactionComplete (tid, true);
+        transactionComplete(tid, true);
     }
 
     /** Return true if the specified transaction has a lock on the specified page */
-    public boolean holdsLock(TransactionId tid, PageId pid) {
-        return mgr.holdsLock(tid, pid);
+    public boolean holdsLock(TransactionId tid, PageId p) {
+        return mgr.holdsLock(tid);
     }
 
     /**
@@ -137,19 +133,18 @@ public class BufferPool {
      * @param tid the ID of the transaction requesting the unlock
      * @param commit a flag indicating whether we should commit or abort
      */
-    public void transactionComplete(TransactionId tid, boolean commit)
+    public synchronized void transactionComplete(TransactionId tid, boolean commit)
         throws IOException {
-        if (tid == null)
-            return;            
-        for (PageId pid : pageMap.keySet()) {
-            Page page = pageMap.get(pid);
-            if (tid.equals(page.isDirty())) {
-                if (commit) 
-                    flushPage(pid);
-                else
-                    pageMap.put(pid, page.getBeforeImage());
-            }
+        if (commit) flushPages(tid);
+        else if (mgr.holdsLock(tid))
+            for (PageId pid : mgr.getDirtyPages(tid))
+                discardPage(pid);        
+
+        if (!mgr.holdsLock(tid)) {
+            notifyAll();
+            return;
         }
+
         mgr.release(tid);
     }
 
@@ -168,7 +163,7 @@ public class BufferPool {
      * @param tableId the table to add the tuple to
      * @param t the tuple to add
      */
-    public void insertTuple(TransactionId tid, int tableId, Tuple t)
+    public synchronized void insertTuple(TransactionId tid, int tableId, Tuple t)
         throws DbException, IOException, TransactionAbortedException {
         
         for (Page page : Database.getCatalog().getDatabaseFile(tableId).insertTuple(tid, t))
@@ -188,7 +183,7 @@ public class BufferPool {
      * @param tid the transaction deleting the tuple.
      * @param t the tuple to delete
      */
-    public  void deleteTuple(TransactionId tid, Tuple t)
+    public synchronized void deleteTuple(TransactionId tid, Tuple t)
         throws DbException, IOException, TransactionAbortedException {
 
         for (Page page : Database.getCatalog().getDatabaseFile(t.getRecordId().getPageId().getTableId()).deleteTuple(tid, t))
@@ -214,7 +209,7 @@ public class BufferPool {
         are removed from the cache so they can be reused safely
     */
     public synchronized void discardPage(PageId pid) {
-        pageMap.remove(pid);
+        if (pageMap.containsKey(pid)) pageMap.remove(pid);               
     }
 
     /**
@@ -222,19 +217,16 @@ public class BufferPool {
      * @param pid an ID indicating the page to flush
      */
     private synchronized  void flushPage(PageId pid) throws IOException {
-        Page page = pageMap.get(pid);
-        if (page.isDirty() == null) 
-            return;
-            
-        Database.getCatalog().getDatabaseFile(pid.getTableId()).writePage(page);
-        page.markDirty(false, null);        
+        if (pageMap.containsKey(pid))
+            Database.getCatalog().getDatabaseFile(pid.getTableId()).writePage(pageMap.get(pid));
     }
 
     /** Write all pages of the specified transaction to disk.
      */
     public synchronized void flushPages(TransactionId tid) throws IOException {
-        // some code goes here
-        // not necessary for lab1|lab2
+        if (mgr.holdsLock(tid))
+            for (PageId pid : mgr.getDirtyPages(tid))
+                flushPage(pid);
     }
 
     /**
@@ -242,24 +234,21 @@ public class BufferPool {
      * Flushes the page to disk to ensure dirty pages are updated on disk.
      */
     private synchronized  void evictPage() throws DbException {
-        int size = 0;
-        Random random = new Random();
-        PageId[] pageIds = new PageId [pageMap.size()];
-
+        PageId evict = null;
         for (PageId pid : pageMap.keySet()) {
-            if (pageMap.get(pid).isDirty() == null)
-                pageIds[size++] = pid;
+            if (pageMap.get(pid).isDirty() == null) {
+                evict = pid;
+                break;
+            }
         }
 
-        if (size == 0)
+        if (evict == null)
             throw new DbException("");
 
-        PageId pid = pageIds[random.nextInt(size)];
-        
-        try { flushPage(pid); }
+        try { flushPage(evict); }
         catch (IOException e) {}
 
-        discardPage(pid);
+        discardPage(evict);
     }
 
 }
