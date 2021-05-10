@@ -1,150 +1,126 @@
 package simpledb;
 
-import java.util.Set;
-import java.util.HashSet;
-import java.util.Collections;
-import java.util.concurrent.ConcurrentHashMap;
+import java.util.*;
 
-public class TransactionManager {
-    private ConcurrentHashMap<PageId, Locks> lockMap;
-    private ConcurrentHashMap<TransactionId, Set<TransactionId>> waiterMap; 
-    private Set<TransactionId> visit;
-
-    class Locks {     
-        public PageId pageid;
-        public TransactionId writeLock;
-        public Set<TransactionId> readLocks;
-
-        public Locks (PageId pageid) {
+public class TransactionManager 
+{
+    class Lock {
+        private final PageId pageid;
+        private final Set<TransactionId> readLocks;
+        private final Set<TransactionId> writeLocks;
+        public Lock(PageId pageid) 
+        {
             this.pageid = pageid;
-            this.writeLock = null;
-            this.readLocks = Collections.newSetFromMap(new ConcurrentHashMap<TransactionId, Boolean>());            
-        }        
+            readLocks = new HashSet<TransactionId>();
+            writeLocks = new HashSet<TransactionId>();        
+        }
 
-        public boolean isFree() {
-            return writeLock == null && readLocks.isEmpty();
+        public PageId getPageId() { return pageid; }
+        public Set<TransactionId> getReadLocks() { return readLocks; }
+        public Set<TransactionId> getWriteLocks() { return writeLocks; }
+        public boolean acquire(TransactionId tid, Permissions perm) {
+            synchronized (this) {
+                if (perm.equals(Permissions.READ_ONLY)) {
+                    if (writeLocks.contains(tid)) return true;
+                    if (writeLocks.isEmpty()) {
+                        readLocks.add(tid);
+                        return true;
+                    }
+                    return false;
+                } else {
+                    if (readLocks.size() > 1) return false;
+                    if (writeLocks.contains(tid)) return true;
+                    if (!writeLocks.isEmpty()) return false;
+                    if (readLocks.contains(tid)) {
+                        readLocks.remove(tid);
+                        writeLocks.add(tid);
+                        return true;
+                    }
+                    if (readLocks.isEmpty()) {
+                        writeLocks.add(tid);
+                        return true;
+                    }
+                    return false;
+                }
+            }
         }
     }
 
-    public TransactionManager () {        
-        lockMap = new ConcurrentHashMap<> ();
-        waiterMap = new ConcurrentHashMap<> ();
-        visit = Collections.newSetFromMap(new ConcurrentHashMap<TransactionId, Boolean>());
+    private final Hashtable<PageId, Lock> lockMap;
+    private final Hashtable<TransactionId, HashSet<Lock>> tMap;    
+    private static final Random Rng = new Random();
+
+    public TransactionManager ()
+    {
+        tMap = new Hashtable<TransactionId, HashSet<Lock>>();
+        lockMap = new Hashtable<PageId, Lock>();
     }
 
-    private synchronized boolean acquireLockHandler(TransactionId tid, PageId pid, Permissions perm) {
+    public synchronized void acquire(TransactionId tid, PageId pid, Permissions perm) 
+        throws TransactionAbortedException
+    {
         if (!lockMap.containsKey(pid))
-            lockMap.put(pid, new Locks(pid));
+            lockMap.put(pid, new Lock(pid));
+        if (!tMap.containsKey(tid))
+            tMap.put(tid, new HashSet<Lock>());
 
-        Locks locks = lockMap.get(pid);
-        if (perm.equals(Permissions.READ_ONLY)) {
-            if (locks.writeLock == null) {
-                locks.readLocks.add(tid);
-                return true;
-            }
+        Lock lock = lockMap.get(pid);
+        tMap.get(tid).add(lock);
 
-            return locks.writeLock.equals(tid);
-        } else {
-            if (locks.writeLock != null)
-                return locks.writeLock.equals(tid);
-            if (locks.readLocks.isEmpty() || 
-                    (locks.readLocks.size() == 1 && locks.readLocks.contains(tid))) {
-                locks.writeLock = tid;
-                locks.readLocks.clear();
-                return true;
-            }
+        long start = System.currentTimeMillis();
+        while (!lock.acquire(tid, perm)) {
+            long limit = 500 + Rng.nextInt(50);
+            if (System.currentTimeMillis() - start > limit)             
+                throw new TransactionAbortedException();           
 
-            return false;
+            try { wait(50); }
+            catch (Exception e) { throw new TransactionAbortedException(); }
         }
     }
 
-    private synchronized void removeWaiters(TransactionId tid) {
-        if (waiterMap.containsKey(tid))
-            waiterMap.remove(tid);
-    }
-
-    private synchronized void addWaiters(TransactionId tid, PageId pid) {
-        if (!waiterMap.containsKey(tid)) 
-            waiterMap.put(tid, new HashSet<> ());
-
-        Set<TransactionId> waiters = waiterMap.get(tid);
-        Locks locks = lockMap.get(pid);
-
-        if (locks == null)
-            return;
-        if (locks.writeLock != null) {
-            waiters.add(locks.writeLock);
-            // System.out.println(tid + " -> " + locks.writeLock);
-        }
-        for (TransactionId t : locks.readLocks) {
-            waiters.add(t);
-            // System.out.println(tid + " -> " + t);
-        }
-    }
-
-    private synchronized boolean searchCycle(TransactionId tid, TransactionId ban) {
-        if (tid.equals(ban))
-            return true;
-        if (visit.contains(tid))
-            return false;
-        visit.add(tid);
-        
-        Set<TransactionId> waiters = waiterMap.get(tid);        
-        if (waiters == null) 
-            return false;
-        for (TransactionId next : waiters) {
-            if (searchCycle(next, ban))
-                return true;
-        }
-
-        return false;
-    }
-
-    private synchronized void detectDeadLock(TransactionId tid) throws TransactionAbortedException {
-        visit.clear();
-        for (TransactionId t : waiterMap.get(tid)) {
-            if (searchCycle(t, tid)) 
-                throw new TransactionAbortedException();
-        }
-    }
-
-    private synchronized boolean acquireLock(TransactionId tid, PageId pid, Permissions perm) 
-        throws TransactionAbortedException {
-        if (acquireLockHandler(tid, pid, perm)) {
-            waiterMap.remove(tid);
-            return true;
-        }
-        
-        addWaiters(tid, pid);
-        detectDeadLock(tid);
-        return false;
-    }
-
-    public void acquire(TransactionId tid, PageId pid, Permissions perm) 
-        throws TransactionAbortedException {
-        for (boolean flag = false; !flag; flag = acquireLock(tid, pid, perm));            
-    }
-
-    public synchronized void release(TransactionId tid, PageId pid) {
-        Locks locks = lockMap.get(pid);
-        if (locks != null) {
-            if (tid.equals(locks.writeLock))
-                locks.writeLock = null;
-            else
-                locks.readLocks.remove(tid);
-
-            if (locks.isFree()) 
+    public synchronized void release(TransactionId tid, PageId pid)
+    {
+        if (tMap.containsKey(tid) && lockMap.containsKey(pid)) {
+            Lock lock = lockMap.get(pid);
+            if (lock.getWriteLocks().contains(tid)) {
+                lock.getWriteLocks().remove(tid);
+                tMap.get(tid).remove(lock);
                 lockMap.remove(pid);
+            } else if (lock.getReadLocks().contains(tid)) {
+                lock.getReadLocks().remove(tid);
+                tMap.get(tid).remove(lock);
+                if (lock.getReadLocks().isEmpty() && lock.getWriteLocks().isEmpty())                     
+                    lockMap.remove(pid);                
+            }
         }
+        notifyAll();
     }
 
-    public synchronized void release(TransactionId tid) {
-        for (PageId pid : lockMap.keySet().toArray(new PageId [lockMap.size()]))
-            release(tid, pid);        
+    public synchronized void release(TransactionId tid)
+    {
+        if (tMap.containsKey(tid)) {
+            Set<PageId> pageIds = new HashSet<PageId>();
+            for (Lock lock : tMap.get(tid))
+                pageIds.add(lock.getPageId());
+            for (PageId pid : pageIds)
+                release(tid, pid);            
+            tMap.remove(tid);
+        }
+        notifyAll();
     }
 
-    public synchronized boolean holdsLock(TransactionId tid, PageId pid) {
-        Locks locks = lockMap.get(pid);
-        return locks != null && (locks.readLocks.contains(tid) || (locks.writeLock != null && locks.writeLock.equals(tid)));
+    public synchronized Set<PageId> getDirtyPages(TransactionId tid)
+    {
+        Set<PageId> pageIds = new HashSet<PageId>();
+        if (tMap.containsKey(tid))
+            for (Lock lock : tMap.get(tid))
+                if (lock.getWriteLocks().contains(tid))
+                    pageIds.add(lock.getPageId()); 
+        return pageIds;
+    }
+
+    public synchronized boolean holdsLock(TransactionId tid)
+    {
+        return tMap.containsKey(tid);
     }
 }
