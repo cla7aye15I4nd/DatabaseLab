@@ -2,7 +2,7 @@ package simpledb;
 
 import java.util.*;
 
-public class TransactionManager 
+public class TransactionManager
 {
     class Lock {
         private final PageId pageid;
@@ -18,45 +18,38 @@ public class TransactionManager
         public PageId getPageId() { return pageid; }
         public Set<TransactionId> getReadLocks() { return readLocks; }
         public Set<TransactionId> getWriteLocks() { return writeLocks; }
-        public boolean acquire(TransactionId tid, Permissions perm) {
-            synchronized (this) {
-                if (perm.equals(Permissions.READ_ONLY)) {
-                    if (writeLocks.contains(tid)) return true;
-                    if (writeLocks.isEmpty()) {
-                        readLocks.add(tid);
-                        return true;
-                    }
-                    return false;
-                } else {
-                    if (readLocks.size() > 1) return false;
-                    if (writeLocks.contains(tid)) return true;
-                    if (!writeLocks.isEmpty()) return false;
-                    if (readLocks.contains(tid)) {
-                        readLocks.remove(tid);
-                        writeLocks.add(tid);
-                        return true;
-                    }
-                    if (readLocks.isEmpty()) {
-                        writeLocks.add(tid);
-                        return true;
-                    }
-                    return false;
-                }
+        public synchronized boolean acquireReadLock(TransactionId tid) {
+            if (writeLocks.contains(tid)) return true;
+            if (writeLocks.isEmpty()) {
+                readLocks.add(tid);
+                return true;
             }
+            return false;
+        }
+        
+        public synchronized boolean acquireWriteLock(TransactionId tid) {
+            if (readLocks.size() > 1) return false;
+            if (writeLocks.contains(tid)) return true;
+            if (!writeLocks.isEmpty()) return false;
+            if (readLocks.isEmpty() || readLocks.contains(tid)) {
+                writeLocks.add(tid);
+                return true;
+            }
+            return false;            
         }
     }
 
     private final Hashtable<PageId, Lock> lockMap;
     private final Hashtable<TransactionId, HashSet<Lock>> tMap;    
-    private static final Random Rng = new Random();
+    public static final Random Rng = new Random();
 
-    public TransactionManager ()
+    public TransactionManager()
     {
-        tMap = new Hashtable<TransactionId, HashSet<Lock>>();
-        lockMap = new Hashtable<PageId, Lock>();
+        tMap = new Hashtable<>();
+        lockMap = new Hashtable<>();
     }
 
-    public synchronized void acquire(TransactionId tid, PageId pid, Permissions perm) 
+    public synchronized void acquire(TransactionId tid, PageId pid, Permissions perm)
         throws TransactionAbortedException
     {
         if (!lockMap.containsKey(pid))
@@ -66,16 +59,22 @@ public class TransactionManager
 
         Lock lock = lockMap.get(pid);
         tMap.get(tid).add(lock);
-
+        
         long start = System.currentTimeMillis();
-        while (!lock.acquire(tid, perm)) {
-            long limit = 500 + Rng.nextInt(50);
-            if (System.currentTimeMillis() - start > limit)             
-                throw new TransactionAbortedException();           
+        if (perm == Permissions.READ_ONLY) 
+            while (!lock.acquireReadLock(tid)) timeCheck(start);
+        else 
+            while (!lock.acquireWriteLock(tid)) timeCheck(start);
 
-            try { wait(50); }
-            catch (Exception e) { throw new TransactionAbortedException(); }
-        }
+        lockMap.put(pid, lock);
+    }
+
+    private void timeCheck(long start) throws TransactionAbortedException {
+        long limit = 500 + this.Rng.nextInt(500);
+        if (System.currentTimeMillis() - start > limit) 
+            throw new TransactionAbortedException();                
+        try { wait(50); }
+        catch (Exception e) { throw new TransactionAbortedException(); }
     }
 
     public synchronized void release(TransactionId tid, PageId pid)
@@ -84,13 +83,15 @@ public class TransactionManager
             Lock lock = lockMap.get(pid);
             if (lock.getWriteLocks().contains(tid)) {
                 lock.getWriteLocks().remove(tid);
+                lock.getReadLocks().remove(tid);
                 tMap.get(tid).remove(lock);
                 lockMap.remove(pid);
             } else if (lock.getReadLocks().contains(tid)) {
                 lock.getReadLocks().remove(tid);
-                tMap.get(tid).remove(lock);
-                if (lock.getReadLocks().isEmpty() && lock.getWriteLocks().isEmpty())                     
-                    lockMap.remove(pid);                
+                if (lock.getReadLocks().isEmpty()) {
+                    lockMap.remove(pid);
+                    tMap.get(tid).remove(lock);
+                }
             }
         }
         notifyAll();
