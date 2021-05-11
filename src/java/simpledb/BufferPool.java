@@ -38,13 +38,13 @@ public class BufferPool {
     public BufferPool(int numPages) {
         maxPage = numPages;
         pageMap = new HashMap<>();                
-        mgr = new TransactionManager();
+        mgr = new TransactionManager();        
     }
     
     public static int getPageSize() {
       return pageSize;
     }
-    
+
     // THIS FUNCTION SHOULD ONLY BE USED FOR TESTING!!
     public static void setPageSize(int pageSize) {
     	BufferPool.pageSize = pageSize;
@@ -73,10 +73,12 @@ public class BufferPool {
      * @param perm the requested permissions on the page
      */
     public Page getPage(TransactionId tid, PageId pid, Permissions perm)
-        throws TransactionAbortedException, DbException {        
+        throws TransactionAbortedException, DbException {
+        mgr.acquire(tid, pid, perm);
+
         synchronized (this)
         {
-            mgr.acquire(tid, pid, perm);
+            // mgr.acquire(tid, pid, perm);
 
             Page page;
             if (!pageMap.containsKey(pid)) {
@@ -163,11 +165,13 @@ public class BufferPool {
      * @param tableId the table to add the tuple to
      * @param t the tuple to add
      */
-    public synchronized void insertTuple(TransactionId tid, int tableId, Tuple t)
+    public void insertTuple(TransactionId tid, int tableId, Tuple t)
         throws DbException, IOException, TransactionAbortedException {
-        
-        for (Page page : Database.getCatalog().getDatabaseFile(tableId).insertTuple(tid, t))
-            updatePage(tid, page);        
+        ArrayList<Page> list = Database.getCatalog().getDatabaseFile(tableId).insertTuple(tid, t);
+        synchronized (this) {
+            for (Page page : list)            
+                updatePage(tid, page);            
+        }
     }
 
     /**
@@ -183,11 +187,13 @@ public class BufferPool {
      * @param tid the transaction deleting the tuple.
      * @param t the tuple to delete
      */
-    public synchronized void deleteTuple(TransactionId tid, Tuple t)
+    public void deleteTuple(TransactionId tid, Tuple t)
         throws DbException, IOException, TransactionAbortedException {
-
-        for (Page page : Database.getCatalog().getDatabaseFile(t.getRecordId().getPageId().getTableId()).deleteTuple(tid, t))
-            updatePage(tid, page);            
+        ArrayList<Page> list = Database.getCatalog().getDatabaseFile(t.getRecordId().getPageId().getTableId()).deleteTuple(tid, t);
+        synchronized (this) {            
+            for (Page page : list)
+                updatePage(tid, page);     
+        }
     }
 
     /**
