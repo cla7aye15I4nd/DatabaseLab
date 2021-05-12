@@ -214,8 +214,11 @@ public class BufferPool {
      * @param pid an ID indicating the page to flush
      */
     private synchronized  void flushPage(PageId pid) throws IOException {
-        if (pageMap.containsKey(pid))
-            Database.getCatalog().getDatabaseFile(pid.getTableId()).writePage(pageMap.get(pid));
+        if (pageMap.containsKey(pid)) {
+            Page page = pageMap.get(pid);
+            if (page.isDirty() != null)
+                Database.getCatalog().getDatabaseFile(pid.getTableId()).writePage(page);
+        }
     }
 
     /** Write all pages of the specified transaction to disk.
@@ -231,21 +234,13 @@ public class BufferPool {
      * Flushes the page to disk to ensure dirty pages are updated on disk.
      */
     private synchronized  void evictPage() throws DbException {
-        PageId evict = null;
-        for (PageId pid : pageMap.keySet()) {
+        for (PageId pid : pageMap.keySet())
             if (pageMap.get(pid).isDirty() == null) {
-                evict = pid;
-                break;
+                discardPage(pid);
+                return;
             }
-        }
 
-        if (evict == null)
-            throw new DbException("");
-
-        try { flushPage(evict); }
-        catch (IOException e) {}
-
-        discardPage(evict);
+        throw new DbException("");
     }
 
 }

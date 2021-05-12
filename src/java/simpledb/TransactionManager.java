@@ -70,7 +70,7 @@ public class TransactionManager
     }
 
     private void timeCheck(long start) throws TransactionAbortedException {
-        long limit = 500 + this.Rng.nextInt(500);
+        long limit = 1000 + Rng.nextInt(1000);
         if (System.currentTimeMillis() - start > limit) 
             throw new TransactionAbortedException();                
         try { wait(50); }
