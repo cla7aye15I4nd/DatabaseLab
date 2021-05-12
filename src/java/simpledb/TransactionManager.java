@@ -39,14 +39,14 @@ public class TransactionManager
         }
     }
 
-    private final Hashtable<PageId, Lock> lockMap;
-    private final Hashtable<TransactionId, HashSet<Lock>> tMap;    
+    private final HashMap<PageId, Lock> lockMap;
+    private final HashMap<TransactionId, HashSet<Lock>> tMap;    
     public static final Random Rng = new Random();
 
     public TransactionManager()
     {
-        tMap = new Hashtable<>();
-        lockMap = new Hashtable<>();
+        tMap = new HashMap<>();
+        lockMap = new HashMap<>();
     }
 
     public synchronized void acquire(TransactionId tid, PageId pid, Permissions perm)

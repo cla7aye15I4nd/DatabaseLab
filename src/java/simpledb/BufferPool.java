@@ -98,6 +98,7 @@ public class BufferPool {
         if (!pageMap.containsKey(page.getId()))
             while (pageMap.size() >= maxPage)
                 evictPage();            
+        page.markDirty(true, tid);
         pageMap.put(page.getId(), page);
     }
 
@@ -123,11 +124,6 @@ public class BufferPool {
         transactionComplete(tid, true);
     }
 
-    /** Return true if the specified transaction has a lock on the specified page */
-    public boolean holdsLock(TransactionId tid, PageId p) {
-        return mgr.holdsLock(tid);
-    }
-
     /**
      * Commit or abort a given transaction; release all locks associated to
      * the transaction.
@@ -141,11 +137,6 @@ public class BufferPool {
         else if (mgr.holdsLock(tid))
             for (PageId pid : mgr.getDirtyPages(tid))
                 discardPage(pid);        
-
-        if (!mgr.holdsLock(tid)) {
-            notifyAll();
-            return;
-        }
 
         mgr.release(tid);
     }
@@ -215,7 +206,7 @@ public class BufferPool {
         are removed from the cache so they can be reused safely
     */
     public synchronized void discardPage(PageId pid) {
-        if (pageMap.containsKey(pid)) pageMap.remove(pid);               
+        pageMap.remove(pid);               
     }
 
     /**
